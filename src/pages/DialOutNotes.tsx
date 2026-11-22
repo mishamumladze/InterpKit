@@ -1,4 +1,5 @@
 import { useState } from "preact/hooks";
+import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { toast } from "../components/ui/sonner";
@@ -71,15 +72,9 @@ export function DialOutNotes() {
         />
       </div>
 
-      <div class="flex justify-center pt-0.5">
-        <button
-          type="button"
-          class="text-xs font-medium text-red-600 transition hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-          onClick={clearScratchpad}
-        >
-          [ Clear ]
-        </button>
-      </div>
+      <Button variant="destructive" class="w-full" onClick={clearScratchpad}>
+        Clear Scratchpad
+      </Button>
     </div>
   );
 }
