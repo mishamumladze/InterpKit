@@ -50,7 +50,7 @@ Built with [Tauri 2](https://tauri.app/), [Preact](https://preactjs.com/), TypeS
 
 Grab the latest Windows installer from the [Releases](https://github.com/mishamumladze/InterpKit/releases/latest) page.
 
-Releases currently include the NSIS installer (`*-setup.exe`). Builds for macOS and Linux can be produced from their respective platforms with `pnpm tauri build`.
+Releases include both the NSIS installer (`*-setup.exe`) and the MSI package (`*.msi`), along with SHA-256 checksums. Builds for macOS and Linux can be produced from their respective platforms with `pnpm tauri build`.
 
 ## Getting started
 
