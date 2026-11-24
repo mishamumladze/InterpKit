@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import {
   Check,
   ChevronRight,
+  Clock,
   Copy,
   FileText,
   FolderOpen,
@@ -9,6 +10,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Star,
   Trash,
   X,
 } from "lucide-preact";
@@ -45,6 +47,8 @@ interface ScriptDraft {
 
 const ALL_SCRIPTS = "all";
 const UNCATEGORIZED = "uncategorized";
+const FAVORITES = "favorites";
+const RECENT = "recent";
 
 const CATEGORY_DOT_CLASSES = [
   "bg-sky-500",
@@ -113,6 +117,8 @@ export function Scripts() {
 
   const counts = new Map<string, number>();
   let uncategorizedCount = 0;
+  let favoritesCount = 0;
+  let recentCount = 0;
 
   for (const script of library.scripts) {
     if (script.categoryId && categoryIds.has(script.categoryId)) {
@@ -120,6 +126,8 @@ export function Scripts() {
     } else {
       uncategorizedCount += 1;
     }
+    if (script.favorite) favoritesCount += 1;
+    if (script.lastUsedAt) recentCount += 1;
   }
 
   const needle = query.trim().toLowerCase();
@@ -129,15 +137,16 @@ export function Scripts() {
         script.categoryId && categoryIds.has(script.categoryId)
           ? script.categoryId
           : null;
-
-      if (filter === UNCATEGORIZED && categoryId !== null) return false;
-      if (
+      const isCategoryFilter =
         filter !== ALL_SCRIPTS &&
         filter !== UNCATEGORIZED &&
-        categoryId !== filter
-      ) {
-        return false;
-      }
+        filter !== FAVORITES &&
+        filter !== RECENT;
+
+      if (filter === UNCATEGORIZED && categoryId !== null) return false;
+      if (isCategoryFilter && categoryId !== filter) return false;
+      if (filter === FAVORITES && !script.favorite) return false;
+      if (filter === RECENT && !script.lastUsedAt) return false;
 
       if (!needle) return true;
 
@@ -149,10 +158,21 @@ export function Scripts() {
         value.toLowerCase().includes(needle)
       );
     })
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort((a, b) => {
+      if (filter === RECENT) {
+        return (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0);
+      }
+      return (
+        Number(Boolean(b.favorite)) - Number(Boolean(a.favorite)) ||
+        b.updatedAt - a.updatedAt
+      );
+    });
 
   const activeCategory =
-    filter !== ALL_SCRIPTS && filter !== UNCATEGORIZED
+    filter !== ALL_SCRIPTS &&
+    filter !== UNCATEGORIZED &&
+    filter !== FAVORITES &&
+    filter !== RECENT
       ? categoriesById.get(filter)
       : undefined;
 
@@ -161,7 +181,29 @@ export function Scripts() {
       ? "All scripts"
       : filter === UNCATEGORIZED
         ? "Uncategorized"
-        : activeCategory?.name ?? "All scripts";
+        : filter === FAVORITES
+          ? "Favorites"
+          : filter === RECENT
+            ? "Recently used"
+            : activeCategory?.name ?? "All scripts";
+
+  const emptyTitle =
+    library.scripts.length === 0
+      ? "No scripts saved yet"
+      : filter === FAVORITES
+        ? "No favorite scripts yet"
+        : filter === RECENT
+          ? "No recently used scripts yet"
+          : "No scripts match";
+
+  const emptyBody =
+    library.scripts.length === 0
+      ? "Save your English and LEP scripts so you can pull them up during a call."
+      : filter === FAVORITES
+        ? "Open a script and tap the star to pin it here."
+        : filter === RECENT
+          ? "Scripts you open or copy will show up here."
+          : "Try a different search or clear the category filter.";
 
   const addCategory = (name: string): ScriptCategory | null => {
     const trimmed = name.trim();
@@ -226,6 +268,36 @@ export function Scripts() {
     });
     toast("Script deleted");
     setOverlay(null);
+  };
+
+  const markUsed = (id: string) => {
+    const current = libraryRef.current;
+    if (!current.scripts.some((script) => script.id === id)) return;
+
+    commit({
+      ...current,
+      scripts: current.scripts.map((script) =>
+        script.id === id ? { ...script, lastUsedAt: Date.now() } : script
+      ),
+    });
+  };
+
+  const toggleFavorite = (id: string) => {
+    const current = libraryRef.current;
+    const script = current.scripts.find((item) => item.id === id);
+    if (!script) return;
+
+    commit({
+      ...current,
+      scripts: current.scripts.map((item) =>
+        item.id === id ? { ...item, favorite: !item.favorite } : item
+      ),
+    });
+  };
+
+  const openScript = (id: string) => {
+    markUsed(id);
+    setOverlay({ mode: "read", id });
   };
 
   const deleteCategory = (category: ScriptCategory) => {
@@ -314,6 +386,8 @@ export function Scripts() {
           counts={counts}
           total={library.scripts.length}
           uncategorizedCount={uncategorizedCount}
+          favoritesCount={favoritesCount}
+          recentCount={recentCount}
           filter={filter}
           onSelect={setFilter}
           onAdd={addCategory}
@@ -326,10 +400,14 @@ export function Scripts() {
           totalScripts={library.scripts.length}
           query={query}
           heading={heading}
+          emptyTitle={emptyTitle}
+          emptyBody={emptyBody}
           categoriesById={categoriesById}
           onQuery={setQuery}
           onNew={() => setOverlay({ mode: "edit" })}
-          onOpen={(id) => setOverlay({ mode: "read", id })}
+          onOpen={openScript}
+          onFavorite={toggleFavorite}
+          onUse={markUsed}
           onClearFilters={() => {
             setQuery("");
             setFilter(ALL_SCRIPTS);
@@ -380,6 +458,8 @@ interface CategoryRailProps {
   counts: Map<string, number>;
   total: number;
   uncategorizedCount: number;
+  favoritesCount: number;
+  recentCount: number;
   filter: string;
   onSelect: (filter: string) => void;
   onAdd: (name: string) => ScriptCategory | null;
@@ -392,6 +472,8 @@ function CategoryRail({
   counts,
   total,
   uncategorizedCount,
+  favoritesCount,
+  recentCount,
   filter,
   onSelect,
   onAdd,
@@ -456,6 +538,28 @@ function CategoryRail({
             icon={<Library size={14} class="shrink-0 text-gray-400" />}
             onClick={() => onSelect(ALL_SCRIPTS)}
           />
+
+          <FilterRow
+            active={filter === FAVORITES}
+            label="Favorites"
+            count={favoritesCount}
+            icon={<Star size={14} class="shrink-0 text-amber-400" />}
+            onClick={() => onSelect(FAVORITES)}
+          />
+
+          {recentCount > 0 && (
+            <FilterRow
+              active={filter === RECENT}
+              label="Recently used"
+              count={recentCount}
+              icon={<Clock size={14} class="shrink-0 text-gray-400" />}
+              onClick={() => onSelect(RECENT)}
+            />
+          )}
+
+          {categories.length > 0 && (
+            <div class="my-1 border-t border-gray-200 dark:border-gray-700" />
+          )}
 
           {categories.map((category) => (
             <div key={category.id}>
@@ -684,10 +788,14 @@ interface LibraryViewProps {
   totalScripts: number;
   query: string;
   heading: string;
+  emptyTitle: string;
+  emptyBody: string;
   categoriesById: Map<string, ScriptCategory>;
   onQuery: (value: string) => void;
   onNew: () => void;
   onOpen: (id: string) => void;
+  onFavorite: (id: string) => void;
+  onUse: (id: string) => void;
   onClearFilters: () => void;
 }
 
@@ -696,10 +804,14 @@ function LibraryView({
   totalScripts,
   query,
   heading,
+  emptyTitle,
+  emptyBody,
   categoriesById,
   onQuery,
   onNew,
   onOpen,
+  onFavorite,
+  onUse,
   onClearFilters,
 }: LibraryViewProps) {
   return (
@@ -735,13 +847,9 @@ function LibraryView({
           <div class="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-indigo-50 text-indigo-500 dark:bg-indigo-500/10 dark:text-indigo-400">
             <FileText size={20} />
           </div>
-          <div class="text-sm font-semibold">
-            {totalScripts === 0 ? "No scripts saved yet" : "No scripts match"}
-          </div>
+          <div class="text-sm font-semibold">{emptyTitle}</div>
           <p class="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-            {totalScripts === 0
-              ? "Save your English and LEP scripts so you can pull them up during a call."
-              : "Try a different search or clear the category filter."}
+            {emptyBody}
           </p>
           <Button
             variant={totalScripts === 0 ? "green" : "secondary"}
@@ -770,6 +878,8 @@ function LibraryView({
                   : undefined
               }
               onOpen={onOpen}
+              onFavorite={onFavorite}
+              onUse={onUse}
             />
           ))}
         </div>
@@ -782,10 +892,14 @@ function ScriptRow({
   script,
   category,
   onOpen,
+  onFavorite,
+  onUse,
 }: {
   script: SavedScript;
   category?: ScriptCategory;
   onOpen: (id: string) => void;
+  onFavorite: (id: string) => void;
+  onUse: (id: string) => void;
 }) {
   const preview = (script.english.trim() || script.lep.trim()).replace(/\s+/g, " ");
 
@@ -815,13 +929,40 @@ function ScriptRow({
           onClick={(event) => event.stopPropagation()}
         >
           <Button
+            variant="ghost"
+            size="icon"
+            class={cn(
+              "h-7 w-7",
+              script.favorite
+                ? "text-amber-500"
+                : "text-gray-400 hover:text-amber-500"
+            )}
+            title={
+              script.favorite
+                ? "Remove from favorites"
+                : "Add to favorites"
+            }
+            aria-label={
+              script.favorite
+                ? `Remove ${script.title} from favorites`
+                : `Add ${script.title} to favorites`
+            }
+            aria-pressed={Boolean(script.favorite)}
+            onClick={() => onFavorite(script.id)}
+          >
+            <Star size={15} class={script.favorite ? "fill-current" : ""} />
+          </Button>
+          <Button
             variant="secondary"
             size="sm"
             class="h-7 px-2 text-[11px] font-semibold"
             title="Copy English script"
             aria-label={`Copy English script: ${script.title}`}
             disabled={!script.english.trim()}
-            onClick={() => copyText(script.english)}
+            onClick={() => {
+              onUse(script.id);
+              copyText(script.english);
+            }}
           >
             EN
           </Button>
@@ -832,7 +973,10 @@ function ScriptRow({
             title="Copy LEP script"
             aria-label={`Copy LEP script: ${script.title}`}
             disabled={!script.lep.trim()}
-            onClick={() => copyText(script.lep)}
+            onClick={() => {
+              onUse(script.id);
+              copyText(script.lep);
+            }}
           >
             LEP
           </Button>
@@ -862,6 +1006,17 @@ interface ScriptReaderProps {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+}
+
+function copyBothLanguages(script: SavedScript) {
+  const parts: string[] = [];
+  if (script.english.trim()) {
+    parts.push(`English:\n${script.english.trim()}`);
+  }
+  if (script.lep.trim()) {
+    parts.push(`LEP:\n${script.lep.trim()}`);
+  }
+  copyText(parts.join("\n\n"));
 }
 
 function ScriptReader({
@@ -913,6 +1068,14 @@ function ScriptReader({
             </>
           ) : (
             <>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!script.english.trim() && !script.lep.trim()}
+                onClick={() => copyBothLanguages(script)}
+              >
+                <Copy size={14} class="mr-1.5" /> Copy both
+              </Button>
               <Button variant="secondary" size="sm" onClick={onEdit}>
                 <Pencil size={14} class="mr-1.5" /> Edit
               </Button>

@@ -1,8 +1,10 @@
 import "./App.css";
 import { useState } from "preact/hooks";
+import { Settings as SettingsIcon } from "lucide-preact";
 import { Button } from "./components/ui/button";
 import { Toaster } from "./components/ui/sonner";
 import { ThemeToggle } from "./components/theme-toggle";
+import { SettingsModal } from "./components/settings-modal";
 import { ShiftTracker } from "./pages/ShiftTracker";
 import { Scripts } from "./pages/Scripts";
 import { DialOutNotes } from "./pages/DialOutNotes";
@@ -17,6 +19,7 @@ const tabs: { id: Tab; label: string }[] = [
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("shift");
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <div class="min-h-screen bg-background text-foreground p-5">
@@ -38,13 +41,29 @@ export default function App() {
           </nav>
         </div>
 
-        <ThemeToggle />
+        <div class="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            class="rounded-full bg-white dark:bg-gray-800"
+            aria-label="Settings"
+            title="Settings"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SettingsIcon size={18} />
+          </Button>
+          <ThemeToggle />
+        </div>
       </header>
 
       {/* Pages stay mounted so unsaved input survives tab switches. */}
       <div hidden={tab !== "shift"}><ShiftTracker /></div>
       <div hidden={tab !== "scripts"}><Scripts /></div>
       <div hidden={tab !== "notes"}><DialOutNotes /></div>
+
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
 
       <Toaster />
     </div>

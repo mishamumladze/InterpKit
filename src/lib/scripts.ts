@@ -10,6 +10,8 @@ export interface SavedScript {
   categoryId: string | null;
   english: string;
   lep: string;
+  favorite?: boolean;
+  lastUsedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -20,7 +22,7 @@ export interface ScriptLibrary {
   scripts: SavedScript[];
 }
 
-const STORAGE_KEY = "interpkit.scripts.v2";
+export const SCRIPTS_STORAGE_KEY = "interpkit.scripts.v2";
 const LEGACY_ENGLISH_KEY = "interpkit.script.english";
 const LEGACY_LEP_KEY = "interpkit.script.lep";
 
@@ -42,6 +44,9 @@ const asString = (value: unknown, fallback = "") =>
 
 const asTimestamp = (value: unknown, fallback: number) =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
+
+const asOptionalTimestamp = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null;
 
 /**
  * Tolerates partially corrupt storage instead of throwing the whole library away.
@@ -84,6 +89,7 @@ function normalizeLibrary(raw: unknown): ScriptLibrary | null {
     scriptIds.add(id);
     const categoryId = asString(item.categoryId);
     const createdAt = asTimestamp(item.createdAt, Date.now());
+    const lastUsedAt = asOptionalTimestamp(item.lastUsedAt);
 
     scripts.push({
       id,
@@ -91,6 +97,8 @@ function normalizeLibrary(raw: unknown): ScriptLibrary | null {
       categoryId: categoryId && categoryIds.has(categoryId) ? categoryId : null,
       english: asString(item.english),
       lep: asString(item.lep),
+      favorite: item.favorite === true,
+      ...(lastUsedAt !== null ? { lastUsedAt } : {}),
       createdAt,
       updatedAt: asTimestamp(item.updatedAt, createdAt),
     });
@@ -99,9 +107,13 @@ function normalizeLibrary(raw: unknown): ScriptLibrary | null {
   return { version: 2, categories, scripts };
 }
 
+export function normalizeScriptLibrary(raw: unknown): ScriptLibrary | null {
+  return normalizeLibrary(raw);
+}
+
 export function saveScriptLibrary(library: ScriptLibrary): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(library));
+    localStorage.setItem(SCRIPTS_STORAGE_KEY, JSON.stringify(library));
   } catch {
     // Ignore storage failures (private mode, full quota, etc.).
   }
@@ -113,7 +125,7 @@ export function saveScriptLibrary(library: ScriptLibrary): void {
  */
 export function loadScriptLibrary(): ScriptLibrary {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(SCRIPTS_STORAGE_KEY);
     if (stored) {
       const normalized = normalizeLibrary(JSON.parse(stored));
       if (normalized) return normalized;

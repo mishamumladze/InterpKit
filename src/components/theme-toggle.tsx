@@ -32,7 +32,14 @@ export function ThemeToggle() {
   };
 
   return (
-    <Button variant="outline" size="icon" onClick={toggleTheme} class="rounded-full bg-white dark:bg-gray-800">
+    <Button
+      variant="outline"
+      size="icon"
+      onClick={toggleTheme}
+      class="rounded-full bg-white dark:bg-gray-800"
+      aria-label={darkMode ? "Switch to light theme" : "Switch to dark theme"}
+      title={darkMode ? "Switch to light theme" : "Switch to dark theme"}
+    >
       {darkMode ? <SunIcon /> : <MoonIcon />}
     </Button>
   );
