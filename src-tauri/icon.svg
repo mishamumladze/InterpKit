@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="InterpKit app icon">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="80" x2="930" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#818CF8"/>
+      <stop offset="0.52" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#4338CA"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="340" y1="350" x2="840" y2="750" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <linearGradient id="line" x1="430" y1="0" x2="700" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#4F46E5"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="26" stdDeviation="30" flood-color="#1E1B4B" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- app tile -->
+  <rect x="56" y="56" width="912" height="912" rx="224" fill="url(#bg)"/>
+
+  <!-- top gloss -->
+  <path d="M56 300C56 168 168 56 300 56h424c132 0 244 112 244 244v74c-130-96-280-146-456-146S186 278 56 374Z" fill="#FFFFFF" opacity="0.09"/>
+
+  <!-- back speech bubble -->
+  <g opacity="0.26">
+    <rect x="226" y="242" width="438" height="304" rx="96" fill="#FFFFFF"/>
+    <path d="M286 512c-16 50-44 90-80 116 56 4 112-14 156-50Z" fill="#FFFFFF"/>
+    <rect x="300" y="330" width="216" height="34" rx="17" fill="#4338CA"/>
+    <rect x="300" y="396" width="152" height="34" rx="17" fill="#4338CA"/>
+  </g>
+
+  <!-- front speech bubble -->
+  <g filter="url(#soft-shadow)">
+    <rect x="340" y="356" width="500" height="398" rx="108" fill="url(#bubble)"/>
+    <path d="M414 704c-16 58-42 100-84 130 62 6 130-24 184-88Z" fill="url(#bubble)"/>
+  </g>
+
+  <!-- bilingual script lines -->
+  <rect x="430" y="448" width="238" height="44" rx="22" fill="url(#line)"/>
+  <rect x="430" y="524" width="168" height="44" rx="22" fill="#A5B4FC"/>
+  <rect x="430" y="600" width="208" height="44" rx="22" fill="#C7D2FE"/>
+
+  <!-- ready accent -->
+  <circle cx="744" cy="428" r="25" fill="#34D399"/>
+  <circle cx="744" cy="428" r="25" fill="none" stroke="#FFFFFF" stroke-opacity="0.5" stroke-width="5"/>
+</svg>

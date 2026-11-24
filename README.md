@@ -1,3 +1,5 @@
+<img src="src-tauri/icons/128x128@2x.png" alt="InterpKit icon" width="72" height="72" align="right" />
+
 # InterpKit
 
 A fast, offline desktop toolkit for interpreters. InterpKit keeps the things you reach for mid-call in one place: shift codes, saved English/LEP scripts, and a dial-out scratchpad.
