@@ -1,9 +1,14 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { copyText } from "../lib/clipboard";
+import {
+  loadShiftDraft,
+  saveShiftDraft,
+  type ShiftDraft,
+} from "../lib/shift-tracker";
 
 const breakCodes = [
   "RR OUT",
@@ -31,12 +36,15 @@ const buildPrefix = (lang: string, first: string, last: string, id: string) => {
 };
 
 export function ShiftTracker() {
-  const [lang, setLang] = useState("");
-  const [first, setFirst] = useState("");
-  const [last, setLast] = useState("");
-  const [id, setId] = useState("");
-  const [customer, setCustomer] = useState("");
-  const [message, setMessage] = useState("");
+  const [draft, setDraft] = useState<ShiftDraft>(loadShiftDraft);
+  const { lang, first, last, id, customer, message } = draft;
+
+  useEffect(() => {
+    saveShiftDraft(draft);
+  }, [draft]);
+
+  const update = (field: keyof ShiftDraft, value: string) =>
+    setDraft((current) => ({ ...current, [field]: value }));
 
   const prefix = buildPrefix(lang, first, last, id);
 
@@ -58,26 +66,29 @@ export function ShiftTracker() {
             <Label>Language</Label>
             <Input
               value={lang}
-              onInput={(e) => setLang(e.currentTarget.value)}
+              onInput={(e) => update("lang", e.currentTarget.value)}
             />
           </div>
           <div>
             <Label>Name</Label>
             <Input
               value={first}
-              onInput={(e) => setFirst(e.currentTarget.value)}
+              onInput={(e) => update("first", e.currentTarget.value)}
             />
           </div>
           <div>
             <Label>Last Name</Label>
             <Input
               value={last}
-              onInput={(e) => setLast(e.currentTarget.value)}
+              onInput={(e) => update("last", e.currentTarget.value)}
             />
           </div>
           <div>
             <Label>ID</Label>
-            <Input value={id} onInput={(e) => setId(e.currentTarget.value)} />
+            <Input
+              value={id}
+              onInput={(e) => update("id", e.currentTarget.value)}
+            />
           </div>
         </div>
 
@@ -113,7 +124,7 @@ export function ShiftTracker() {
               <Input
                 placeholder="e.g., T-Mobile Contact Centers"
                 value={customer}
-                onInput={(e) => setCustomer(e.currentTarget.value)}
+                onInput={(e) => update("customer", e.currentTarget.value)}
               />
             </div>
             <div>
@@ -121,7 +132,7 @@ export function ShiftTracker() {
               <Input
                 placeholder="e.g., LEP hung up"
                 value={message}
-                onInput={(e) => setMessage(e.currentTarget.value)}
+                onInput={(e) => update("message", e.currentTarget.value)}
               />
             </div>
           </div>

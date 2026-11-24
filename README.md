@@ -14,6 +14,7 @@ Built with [Tauri 2](https://tauri.app/), [Preact](https://preactjs.com/), TypeS
 - Copy formatted shift markers in one click: **Start of Shift**, **Start of Shift with Mentoring**, and **End of Shift**.
 - Quick access to every break code (`RR`, `BRK 1`, `BRK 2`, `LBRK`).
 - Log call outcomes as **Short Call**, **Error**, **Problematic LEP**, or **Problematic Client**, with customer and message details included.
+- Your details are saved locally and restored automatically the next time you open the app.
 
 ### Scripts
 
@@ -110,7 +111,8 @@ docs/screenshots/  Images used in this README
 InterpKit stores its data in the app's local browser storage:
 
 - `interpkit.scripts.v2` — saved scripts and categories
+- `interpkit.shift-tracker.v1` — Shift Tracker inputs
 - `interpkit.theme` — selected light/dark theme
 - `interpkit.script.english` / `interpkit.script.lep` — legacy keys, read once and migrated into the script library
 
-Shift Tracker and Dial-Out Notes are in-memory scratchpads; they are not persisted. Nothing leaves your machine.
+Shift Tracker inputs are persisted locally. Dial-Out Notes is an in-memory scratchpad and is not persisted. Nothing leaves your machine.
