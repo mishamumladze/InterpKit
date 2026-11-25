@@ -32,6 +32,21 @@ Built with [Tauri 2](https://tauri.app/), [Preact](https://preactjs.com/), TypeS
 - Create and edit scripts in a modal without leaving the library. Search and filters stay exactly where you left them.
 - Existing single-script data from earlier versions is migrated automatically.
 
+### Captions
+
+- View **Windows 11 Live Captions** directly inside InterpKit.
+- Start and stop the capture service from the app.
+- Pause updates while selecting text, copy the transcript, and adjust the text size.
+- Transcripts stay on your machine and are not saved.
+
+Live Captions requires Windows 11 and Python 3 with:
+
+```bash
+pip install comtypes websockets
+```
+
+Open Windows Live Captions with **Win + Ctrl + L**, then click **Start service** on the Captions tab.
+
 ### Dial-Out Notes
 
 - Keep client name, callback number, LEP name, and LEP number at hand.
@@ -51,15 +66,19 @@ Built with [Tauri 2](https://tauri.app/), [Preact](https://preactjs.com/), TypeS
 | --- | --- |
 | ![Script view modal](docs/screenshots/script-modal.png) | ![Shift Tracker](docs/screenshots/shift-tracker.png) |
 
-| Dial-Out Notes | Settings & backups |
+| Live Captions | Dial-Out Notes |
 | --- | --- |
-| ![Dial-Out Notes](docs/screenshots/dial-out-notes.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Live Captions](docs/screenshots/captions.png) | ![Dial-Out Notes](docs/screenshots/dial-out-notes.png) |
+
+![Settings & backups](docs/screenshots/settings.png)
 
 ## Download
 
 Grab the latest Windows installer from the [Releases](https://github.com/mishamumladze/InterpKit/releases/latest) page.
 
 Releases include both the NSIS installer (`*-setup.exe`) and the MSI package (`*.msi`), along with SHA-256 checksums. Builds for macOS and Linux can be produced from their respective platforms with `pnpm tauri build`.
+
+Live Captions additionally requires Python 3 with `comtypes` and `websockets` installed. Everything else works without Python.
 
 ## Getting started
 
@@ -106,8 +125,9 @@ Installers are written to:
 ## Project structure
 
 ```text
+captions/           Python service that reads the Windows Live Captions window
 src/
-  pages/           Shift Tracker, Scripts, and Dial-Out Notes
+  pages/           Shift Tracker, Scripts, Captions, and Dial-Out Notes
   components/ui/   Shared UI primitives (Button, Input, Modal, ...)
   lib/             Clipboard, storage, backup, and shift-session helpers
 src-tauri/         Tauri shell, configuration, and Rust entry points
@@ -124,4 +144,6 @@ InterpKit stores its data in the app's local browser storage:
 - `interpkit.theme` — selected light/dark theme
 - `interpkit.script.english` / `interpkit.script.lep` — legacy keys, read once and migrated into the script library
 
-Shift Tracker details and the shift log are persisted locally. **Settings → Export backup** writes everything to a JSON file you can keep or move to another machine. Dial-Out Notes is an in-memory scratchpad and is not persisted. Nothing leaves your machine.
+Shift Tracker details and the shift log are persisted locally. **Settings → Export backup** writes everything to a JSON file you can keep or move to another machine. Dial-Out Notes is an in-memory scratchpad and is not persisted.
+
+Live Captions are read locally from Windows Live Captions by the capture service. The transcript is displayed in memory only — it is never saved, synced, or sent anywhere. Nothing leaves your machine.

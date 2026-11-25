@@ -7,13 +7,15 @@ import { ThemeToggle } from "./components/theme-toggle";
 import { SettingsModal } from "./components/settings-modal";
 import { ShiftTracker } from "./pages/ShiftTracker";
 import { Scripts } from "./pages/Scripts";
+import { Captions } from "./pages/Captions";
 import { DialOutNotes } from "./pages/DialOutNotes";
 
-type Tab = "shift" | "scripts" | "notes";
+type Tab = "shift" | "scripts" | "captions" | "notes";
 
 const tabs: { id: Tab; label: string }[] = [
   { id: "shift", label: "Shift Tracker" },
   { id: "scripts", label: "Scripts" },
+  { id: "captions", label: "Captions" },
   { id: "notes", label: "Dial-Out Notes" },
 ];
 
@@ -59,6 +61,9 @@ export default function App() {
       {/* Pages stay mounted so unsaved input survives tab switches. */}
       <div hidden={tab !== "shift"}><ShiftTracker /></div>
       <div hidden={tab !== "scripts"}><Scripts /></div>
+      <div hidden={tab !== "captions"}>
+        <Captions active={tab === "captions"} />
+      </div>
       <div hidden={tab !== "notes"}><DialOutNotes /></div>
 
       {settingsOpen && (
