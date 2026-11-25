@@ -62,7 +62,7 @@ export default function App() {
       <div hidden={tab !== "shift"}><ShiftTracker /></div>
       <div hidden={tab !== "scripts"}><Scripts /></div>
       <div hidden={tab !== "captions"}>
-        <Captions active={tab === "captions"} />
+        <Captions />
       </div>
       <div hidden={tab !== "notes"}><DialOutNotes /></div>
 

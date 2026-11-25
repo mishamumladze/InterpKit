@@ -12,7 +12,25 @@ import { toast } from "../components/ui/sonner";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/utils";
 
-type ConnectionState = "idle" | "connecting" | "live" | "disconnected";
+type CaptureState =
+  | "idle"
+  | "starting"
+  | "running"
+  | "waiting"
+  | "stopped"
+  | "error";
+
+interface CaptionStatusPayload {
+  state: CaptureState;
+  message?: string;
+}
+
+interface CaptionSnapshot {
+  running: boolean;
+  state: CaptureState;
+  message?: string;
+  text: string;
+}
 
 interface SelectionOffsets {
   start: number;
@@ -20,8 +38,6 @@ interface SelectionOffsets {
   backward: boolean;
 }
 
-const WS_URL = "ws://localhost:8765";
-const RECONNECT_DELAY = 2000;
 const BOTTOM_SLACK = 60;
 
 function selectionOffsets(node: Text): SelectionOffsets | null {
@@ -77,8 +93,9 @@ function hasSelection(node: Text): boolean {
   );
 }
 
-export function Captions({ active }: { active: boolean }) {
-  const [connection, setConnection] = useState<ConnectionState>("idle");
+export function Captions() {
+  const [captureState, setCaptureState] = useState<CaptureState>("stopped");
+  const [captureMessage, setCaptureMessage] = useState("");
   const [paused, setPaused] = useState(false);
   const [fontSize, setFontSize] = useState(18);
   const [starting, setStarting] = useState(false);
@@ -153,60 +170,61 @@ export function Captions({ active }: { active: boolean }) {
   }, [ensureTextNode]);
 
   useEffect(() => {
-    if (!active) {
-      setConnection("idle");
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setCaptureState("stopped");
       return;
     }
 
-    let socket: WebSocket | null = null;
-    let retryTimer: number | undefined;
     let disposed = false;
+    let unlistenText: (() => void) | undefined;
+    let unlistenStatus: (() => void) | undefined;
 
-    const connect = () => {
-      if (disposed) return;
+    (async () => {
+      const [{ listen }, { invoke }] = await Promise.all([
+        import("@tauri-apps/api/event"),
+        import("@tauri-apps/api/core"),
+      ]);
 
-      setConnection("connecting");
-      socket = new WebSocket(WS_URL);
+      unlistenText = await listen<string>("captions:text", (event) => {
+        if (!disposed) applyTranscript(event.payload);
+      });
+      if (disposed) {
+        unlistenText();
+        return;
+      }
 
-      socket.onopen = () => {
-        if (!disposed) setConnection("live");
-      };
-
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (typeof data.text !== "string") return;
-
-          latestTextRef.current = data.text;
-          if (pausedRef.current) return;
-          if (draggingRef.current) {
-            pendingTextRef.current = data.text;
-            return;
-          }
-
-          applyTranscript(data.text);
-        } catch {
-          // Ignore malformed messages.
+      unlistenStatus = await listen<CaptionStatusPayload>(
+        "captions:status",
+        (event) => {
+          if (disposed) return;
+          setCaptureState(event.payload.state);
+          setCaptureMessage(event.payload.message ?? "");
         }
-      };
+      );
+      if (disposed) {
+        unlistenStatus();
+        unlistenText?.();
+        return;
+      }
 
-      socket.onclose = () => {
+      try {
+        const snapshot = await invoke<CaptionSnapshot>("captions_status");
         if (disposed) return;
-        setConnection("disconnected");
-        retryTimer = window.setTimeout(connect, RECONNECT_DELAY);
-      };
 
-      socket.onerror = () => socket?.close();
-    };
-
-    connect();
+        setCaptureState(snapshot.state || "stopped");
+        setCaptureMessage(snapshot.message ?? "");
+        if (snapshot.text) applyTranscript(snapshot.text);
+      } catch {
+        // The command is only available in the desktop app.
+      }
+    })();
 
     return () => {
       disposed = true;
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-      socket?.close();
+      unlistenText?.();
+      unlistenStatus?.();
     };
-  }, [active, applyTranscript]);
+  }, [applyTranscript]);
 
   useEffect(() => {
     const endDrag = () => {
@@ -248,11 +266,9 @@ export function Captions({ active }: { active: boolean }) {
     return () => element.removeEventListener("wheel", handleWheel);
   }, []);
 
-  const startService = async () => {
+  const startCapture = async () => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      toast(
-        "Launching the caption service is available in the desktop app. You can also run python capture.py manually."
-      );
+      toast("Captions are only available in the desktop app.");
       return;
     }
 
@@ -262,10 +278,9 @@ export function Captions({ active }: { active: boolean }) {
       const result = await invoke<string>("start_captions");
       toast(
         result === "started"
-          ? "Caption service started"
-          : "Caption service is already running"
+          ? "Capturing Live Captions"
+          : "Capture is already running"
       );
-      setConnection("connecting");
     } catch (error) {
       toast(String(error));
     } finally {
@@ -273,9 +288,9 @@ export function Captions({ active }: { active: boolean }) {
     }
   };
 
-  const stopService = async () => {
+  const stopCapture = async () => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      toast("Stopping the caption service is available in the desktop app.");
+      toast("Captions are only available in the desktop app.");
       return;
     }
 
@@ -283,10 +298,10 @@ export function Captions({ active }: { active: boolean }) {
       const { invoke } = await import("@tauri-apps/api/core");
       const result = await invoke<string>("stop_captions");
       toast(
-        result === "stopped"
-          ? "Caption service stopped"
-          : "No caption service started by InterpKit is running"
+        result === "stopped" ? "Capture stopped" : "Capture is not running"
       );
+      setCaptureState("stopped");
+      setCaptureMessage("");
     } catch (error) {
       toast(String(error));
     }
@@ -302,30 +317,41 @@ export function Captions({ active }: { active: boolean }) {
     }
   };
 
-  const connectionLabel =
-    connection === "live"
+  const captureLabel =
+    captureState === "running"
       ? "Live"
-      : connection === "connecting"
-        ? "Connecting to captions…"
-        : connection === "disconnected"
-          ? "Disconnected"
-          : "Captions off";
+      : captureState === "waiting"
+        ? "Waiting for Live Captions"
+        : captureState === "starting"
+          ? "Starting capture…"
+          : captureState === "error"
+            ? "Capture error"
+            : "Stopped";
 
   const dotClass =
-    connection === "live"
+    captureState === "running"
       ? "bg-emerald-500 animate-pulse"
-      : connection === "connecting"
+      : captureState === "starting" || captureState === "waiting"
         ? "bg-amber-500 animate-pulse"
-        : connection === "disconnected"
+        : captureState === "error"
           ? "bg-red-500"
           : "bg-gray-400";
 
   const emptyMessage =
-    connection === "live"
-      ? "Connected. Open Windows Live Captions and play some audio."
-      : connection === "connecting"
-        ? "Connecting to the caption service…"
-        : "Start the caption service or run capture.py to see live captions.";
+    captureState === "running"
+      ? "Connected. Waiting for audio from Windows Live Captions."
+      : captureState === "waiting"
+        ? "Open Windows Live Captions with Win + Ctrl + L."
+        : captureState === "starting"
+          ? "Starting the native capture thread…"
+          : captureState === "error"
+            ? captureMessage || "Could not read Windows Live Captions."
+            : "Click Start capture to read Windows Live Captions.";
+
+  const isCapturing =
+    captureState === "running" ||
+    captureState === "waiting" ||
+    captureState === "starting";
 
   return (
     <Card>
@@ -336,11 +362,11 @@ export function Captions({ active }: { active: boolean }) {
               <span class={cn("h-2 w-2 rounded-full", dotClass)} />
               <h2 class="text-lg font-bold">Live Captions</h2>
               <span class="text-xs text-gray-500 dark:text-gray-400">
-                {connectionLabel}
+                {captureLabel}
               </span>
             </div>
             <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              Windows 11 Live Captions · Win + Ctrl + L opens the caption window
+              Windows 11 Live Captions · read natively through UI Automation
             </p>
           </div>
 
@@ -348,13 +374,18 @@ export function Captions({ active }: { active: boolean }) {
             <Button
               variant="secondary"
               size="sm"
-              disabled={starting}
-              onClick={startService}
+              disabled={starting || isCapturing}
+              onClick={startCapture}
             >
               <Play size={14} class="mr-1.5" />
-              {starting ? "Starting…" : "Start service"}
+              {starting ? "Starting…" : "Start capture"}
             </Button>
-            <Button variant="ghost" size="sm" onClick={stopService}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!isCapturing}
+              onClick={stopCapture}
+            >
               <Square size={13} class="mr-1.5" /> Stop
             </Button>
             <Button
@@ -383,8 +414,8 @@ export function Captions({ active }: { active: boolean }) {
 
         <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
           <span>
-            Captions stay on this device. Start the service after opening Live
-            Captions.
+            Captions stay on this device. Open Live Captions first, then start
+            capture.
           </span>
           <div class="flex items-center gap-1">
             <Button
@@ -436,17 +467,16 @@ export function Captions({ active }: { active: boolean }) {
           </div>
         </div>
 
+        {captureState === "error" && hasText && captureMessage && (
+          <p class="text-[11px] text-red-600 dark:text-red-400">
+            {captureMessage}
+          </p>
+        )}
+
         <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">
           <span>
-            Service launching requires Python 3 with{" "}
-            <code class="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-700">
-              comtypes
-            </code>{" "}
-            and{" "}
-            <code class="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-700">
-              websockets
-            </code>
-            .
+            Captions are read locally from Windows Live Captions and are never
+            saved or sent anywhere.
           </span>
           <span>Ctrl + scroll to zoom</span>
         </div>
