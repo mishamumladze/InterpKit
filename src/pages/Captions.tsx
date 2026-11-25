@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import {
   Captions as CaptionsIcon,
   Copy,
@@ -14,20 +14,143 @@ import { cn } from "../lib/utils";
 
 type ConnectionState = "idle" | "connecting" | "live" | "disconnected";
 
+interface SelectionOffsets {
+  start: number;
+  end: number;
+  backward: boolean;
+}
+
 const WS_URL = "ws://localhost:8765";
 const RECONNECT_DELAY = 2000;
 const BOTTOM_SLACK = 60;
 
+function selectionOffsets(node: Text): SelectionOffsets | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const range = selection.getRangeAt(0);
+  if (range.startContainer !== node || range.endContainer !== node) {
+    return null;
+  }
+
+  return {
+    start: range.startOffset,
+    end: range.endOffset,
+    backward:
+      (selection as Selection & { direction?: string }).direction === "backward",
+  };
+}
+
+function restoreSelection(
+  node: Text,
+  saved: SelectionOffsets,
+  length: number
+) {
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  const start = Math.min(saved.start, length);
+  const end = Math.min(saved.end, length);
+  if (start >= end) return;
+
+  if (saved.backward && typeof selection.setBaseAndExtent === "function") {
+    selection.setBaseAndExtent(node, end, node, start);
+    return;
+  }
+
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, end);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function hasSelection(node: Text): boolean {
+  const selection = window.getSelection();
+  return Boolean(
+    selection &&
+      !selection.isCollapsed &&
+      selection.rangeCount > 0 &&
+      selection.getRangeAt(0).commonAncestorContainer === node
+  );
+}
+
 export function Captions({ active }: { active: boolean }) {
-  const [transcript, setTranscript] = useState("");
-  const [displayed, setDisplayed] = useState("");
   const [connection, setConnection] = useState<ConnectionState>("idle");
   const [paused, setPaused] = useState(false);
   const [fontSize, setFontSize] = useState(18);
   const [starting, setStarting] = useState(false);
+  const [hasText, setHasText] = useState(false);
 
-  const transcriptRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const textHostRef = useRef<HTMLDivElement>(null);
+  const textNodeRef = useRef<Text | null>(null);
+  const renderedTextRef = useRef("");
+  const latestTextRef = useRef("");
+  const draggingRef = useRef(false);
+  const pendingTextRef = useRef<string | null>(null);
+  const pausedRef = useRef(false);
   const pinnedRef = useRef(true);
+
+  const ensureTextNode = useCallback((): Text | null => {
+    const host = textHostRef.current;
+    if (!host) return null;
+
+    if (textNodeRef.current && textNodeRef.current.parentNode === host) {
+      return textNodeRef.current;
+    }
+
+    const node = document.createTextNode(renderedTextRef.current);
+    host.appendChild(node);
+    textNodeRef.current = node;
+    return node;
+  }, []);
+
+  const applyTranscript = useCallback(
+    (next: string) => {
+      const node = ensureTextNode();
+      if (!node) return;
+
+      const previous = renderedTextRef.current;
+      if (next === previous) return;
+
+      const selection = draggingRef.current ? null : selectionOffsets(node);
+      let common = 0;
+      const max = Math.min(previous.length, next.length);
+      while (
+        common < max &&
+        previous.charCodeAt(common) === next.charCodeAt(common)
+      ) {
+        common += 1;
+      }
+
+      if (common === previous.length) {
+        node.appendData(next.slice(common));
+      } else {
+        node.replaceData(common, previous.length - common, next.slice(common));
+      }
+
+      renderedTextRef.current = next;
+      latestTextRef.current = next;
+      setHasText(next.length > 0);
+
+      if (selection && common < selection.end) {
+        restoreSelection(node, selection, next.length);
+      }
+
+      const scroller = scrollRef.current;
+      if (scroller && pinnedRef.current && !hasSelection(node)) {
+        scroller.scrollTop = scroller.scrollHeight;
+      }
+    },
+    [ensureTextNode]
+  );
+
+  useEffect(() => {
+    ensureTextNode();
+  }, [ensureTextNode]);
 
   useEffect(() => {
     if (!active) {
@@ -52,7 +175,16 @@ export function Captions({ active }: { active: boolean }) {
       socket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (typeof data.text === "string") setTranscript(data.text);
+          if (typeof data.text !== "string") return;
+
+          latestTextRef.current = data.text;
+          if (pausedRef.current) return;
+          if (draggingRef.current) {
+            pendingTextRef.current = data.text;
+            return;
+          }
+
+          applyTranscript(data.text);
         } catch {
           // Ignore malformed messages.
         }
@@ -74,22 +206,34 @@ export function Captions({ active }: { active: boolean }) {
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       socket?.close();
     };
-  }, [active]);
+  }, [active, applyTranscript]);
 
   useEffect(() => {
-    if (!paused) setDisplayed(transcript);
-  }, [transcript, paused]);
+    const endDrag = () => {
+      if (!draggingRef.current) return;
+
+      draggingRef.current = false;
+      const pending = pendingTextRef.current;
+      pendingTextRef.current = null;
+
+      if (pending !== null && !pausedRef.current) {
+        applyTranscript(pending);
+      }
+    };
+
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
+    window.addEventListener("blur", endDrag);
+
+    return () => {
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
+      window.removeEventListener("blur", endDrag);
+    };
+  }, [applyTranscript]);
 
   useEffect(() => {
-    if (paused) return;
-    const element = transcriptRef.current;
-    if (element && pinnedRef.current) {
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [displayed, paused]);
-
-  useEffect(() => {
-    const element = transcriptRef.current;
+    const element = scrollRef.current;
     if (!element) return;
 
     const handleWheel = (event: WheelEvent) => {
@@ -131,9 +275,7 @@ export function Captions({ active }: { active: boolean }) {
 
   const stopService = async () => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      toast(
-        "Stopping the caption service is available in the desktop app."
-      );
+      toast("Stopping the caption service is available in the desktop app.");
       return;
     }
 
@@ -147,6 +289,16 @@ export function Captions({ active }: { active: boolean }) {
       );
     } catch (error) {
       toast(String(error));
+    }
+  };
+
+  const togglePause = () => {
+    const next = !paused;
+    pausedRef.current = next;
+    setPaused(next);
+
+    if (!next) {
+      applyTranscript(latestTextRef.current);
     }
   };
 
@@ -208,15 +360,8 @@ export function Captions({ active }: { active: boolean }) {
             <Button
               variant="secondary"
               size="sm"
-              disabled={!displayed.trim()}
-              onClick={() => {
-                if (paused) {
-                  setPaused(false);
-                  setDisplayed(transcript);
-                } else {
-                  setPaused(true);
-                }
-              }}
+              disabled={!hasText}
+              onClick={togglePause}
             >
               {paused ? (
                 <Play size={14} class="mr-1.5" />
@@ -228,8 +373,8 @@ export function Captions({ active }: { active: boolean }) {
             <Button
               variant="secondary"
               size="sm"
-              disabled={!displayed.trim()}
-              onClick={() => copyText(displayed)}
+              disabled={!hasText}
+              onClick={() => copyText(renderedTextRef.current)}
             >
               <Copy size={14} class="mr-1.5" /> Copy
             </Button>
@@ -265,24 +410,30 @@ export function Captions({ active }: { active: boolean }) {
         </div>
 
         <div
-          ref={transcriptRef}
+          ref={scrollRef}
+          onPointerDown={() => {
+            draggingRef.current = true;
+          }}
           onScroll={(event) => {
             const element = event.currentTarget;
             pinnedRef.current =
               element.scrollHeight - element.scrollTop - element.clientHeight <
               BOTTOM_SLACK;
           }}
-          class="max-h-[55vh] min-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 leading-relaxed text-gray-900 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-100"
+          class="relative max-h-[55vh] min-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 leading-relaxed text-gray-900 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-100"
           style={{ fontSize: `${fontSize}px` }}
         >
-          {displayed.trim() ? (
-            displayed
-          ) : (
-            <div class="flex h-56 flex-col items-center justify-center gap-2 text-center text-sm text-gray-400 dark:text-gray-500">
-              <CaptionsIcon size={22} />
-              <span>{emptyMessage}</span>
-            </div>
-          )}
+          <div ref={textHostRef} class="whitespace-pre-wrap" />
+
+          <div
+            class={cn(
+              "pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-sm text-gray-400 dark:text-gray-500",
+              hasText && "hidden"
+            )}
+          >
+            <CaptionsIcon size={22} />
+            <span>{emptyMessage}</span>
+          </div>
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 dark:text-gray-400">

@@ -36,7 +36,8 @@ Built with [Tauri 2](https://tauri.app/), [Preact](https://preactjs.com/), TypeS
 
 - View **Windows 11 Live Captions** directly inside InterpKit.
 - Start and stop the capture service from the app.
-- Pause updates while selecting text, copy the transcript, and adjust the text size.
+- Select and copy text while captions keep arriving — updates defer while you drag a selection, and your selection is preserved afterward.
+- Pause and resume the transcript, copy it, and adjust the text size.
 - Transcripts stay on your machine and are not saved.
 
 Live Captions requires Windows 11 and Python 3 with:
